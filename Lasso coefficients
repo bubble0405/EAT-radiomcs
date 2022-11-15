@@ -1,0 +1,9 @@
+#Lasso coefficients
+library(ggplot2)
+library(dplyr)
+data <- read.table("coefficient.csv",header=T,sep=",")
+data <- data %>% mutate(
+  Feature = factor(Feature,levels = rev(Feature[order(Coefficient)])))
+myplot=ggplot(data,aes(x=Coefficient,y=Feature))+
+  geom_bar(stat="identity",width=0.5,col="#4393C3",lwd=1,fill="#4393C3")
+myplot+theme_bw()
