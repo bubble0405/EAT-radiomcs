@@ -1,0 +1,33 @@
+#t-test for radiomics signature
+library(reshape2)
+library(ggplot2)
+#train
+alpha1 <- read.table('alpha1.txt', sep = '\t', header = TRUE, stringsAsFactors = FALSE)
+group1  <- read.table('group1.txt', sep = '\t', header = TRUE, stringsAsFactors = FALSE)
+alpha1 <- melt(merge(alpha1, group1, by = 'Sample'), id = c('Sample', 'group'))
+richness_rad1 <- subset(alpha1, variable == 'rad' & group %in% c('POAF', 'non-POAF'))
+p1<-ggplot(richness_rad1,width=0.9,aes(x = group,y = value, fill = group))+
+  geom_boxplot(aes(fill = group),position=position_dodge(1),
+               size=0.5,
+               width=0.4)+
+  stat_boxplot(geom = "errorbar",width=0.15,lwd=1)+
+  labs(x = 'Group', y = 'Radiomics signature', title = 'p < 0.05')+
+  theme(legend.position="none",panel.grid = element_blank(), 
+        panel.background = element_rect(color = 'black', fill = 'transparent'), 
+        plot.title = element_text( hjust = 0.5,vjust = -20)) 
+p1
+#test
+alpha2 <- read.table('alpha2.txt', sep = '\t', header = TRUE, stringsAsFactors = FALSE)
+group2  <- read.table('group2.txt', sep = '\t', header = TRUE, stringsAsFactors = FALSE)
+alpha2 <- melt(merge(alpha2, group2, by = 'Sample'), id = c('Sample', 'group'))
+richness_rad2 <- subset(alpha2, variable == 'rad' & group %in% c('POAF', 'non-POAF'))
+p2<-ggplot(richness_rad2,width=0.9,aes(x = group,y = value, fill = group))+
+  geom_boxplot(aes(fill = group),position=position_dodge(1),
+               size=0.5,
+               width=0.4)+
+  stat_boxplot(geom = "errorbar",width=0.15,lwd=1)+
+  labs(x = 'Group', y = 'Radiomics signature', title = 'p = 0.07')+
+  theme(legend.position="none",panel.grid = element_blank(), 
+        panel.background = element_rect(color = 'black', fill = 'transparent'), 
+        plot.title = element_text( hjust = 0.5,vjust = -20)) 
+p2
