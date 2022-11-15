@@ -1,0 +1,62 @@
+#200 times stratified 5-fold cross-validation
+trainm <- read.csv('trainm.csv')
+sample=list()
+for (s in 1:200) {
+  Z=5
+  T=2
+  n=nrow(trainm)
+  e=names(table(trainm$label))
+  d=1:n
+  dd=list()
+  for(i in 1:2) {
+    dd[[i]]=d[trainm[,1]==e[i]]
+  }
+  kk=NULL
+  for(i in 1:T){
+    kk=c(kk,round(length(dd[[i]])/Z))
+  } 
+  kk
+  yy=list(NULL,NULL)
+  for(i in 1:T){
+    xx=list()
+    uu=dd[[i]]
+    for(j in 1:(Z-1)){
+      xx[[j]]=sample(uu,kk[[i]])
+      uu=setdiff(uu,xx[[j]])
+    }
+    xx[[Z]]=uu
+    for(k in 1:Z){
+      yy[[i]][[k]]=xx[[k]]
+    }
+  }
+  mm=list(NULL,NULL,NULL,NULL,NULL)
+  for(i in 1:Z){
+    for(j in 1:T){
+      mm[[i]]=c(mm[[i]],yy[[j]][[i]])
+    }
+  }
+  sample[[s]]<-mm 
+}
+
+train <- trainm[-sample[[1]][[1]],]
+test <- trainm[sample[[1]][[1]],]
+dd <- datadist(train)
+options(datadist='dd')
+fit <- lrm(label~Radiomics.signature,data=train,x=T,y=T)
+p <- predict(fit,newdata=test,type='fitted')
+gfit <- roc(label~p, data = test)
+
+auc_value<-as.numeric()
+for(i in 1:200){
+  for(z in 1:5){
+    train<- trainm[-sample[[i]][[z]],]
+    test <- trainm[sample[[i]][[z]],]
+    fit <- lrm(label~Radiomics.signature,data=train,x=T,y=T)
+    p <- predict(fit,newdata=test,type='fitted')
+    auc_value<- append(auc_value,as.numeric(auc(as.numeric(test[,1]),p)))
+  }
+}
+auc_value
+summary(auc_value)
+mean(auc_value)
+t.test(auc_value)
