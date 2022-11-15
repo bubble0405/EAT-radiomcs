@@ -1,7 +1,3 @@
-{getwd()
-  setwd('C:/Users/lenovo/Desktop/paper/EAT')
-  getwd()
-}
 #ICC
 {library(irr)
   feature1 <- read.csv('data1.csv')
