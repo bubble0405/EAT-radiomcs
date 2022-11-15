@@ -1,0 +1,45 @@
+#Bar plots for the radiomics signature of each patient
+library(dplyr)
+library(ggplot2)
+library(hrbrthemes)
+#train
+title=" "
+data1 <- read.table("trainwaterfall.csv",header=T,sep=",")
+y_threshold=-0.84
+data1 <- data1%>%
+  mutate(mycolor=ifelse(data1$label=="0","#4D85BD","#F7903D"))
+plt1 <- ggplot(data1,aes(x=Name,y=Radiomics.signature()))+
+  geom_segment(aes(x=Name,xend=Name,y=y_threshold,
+                   yend=Radiomics.signature),color=data1$mycolor,size=3,alpha=0.9)+
+  theme_light()+
+  theme_classic()+
+  theme(
+    legend.position='top',
+    panel.border=element_rect(color = "black", fill = NA,size = 1)
+  )+
+  xlab("Patient")+
+  ylab("Radiomics signature")+
+  labs(title=title)+
+  theme(plot.title=element_text(hjust=0.5))
+plot(plt1)
+
+#test
+title=" "
+data2<- read.table("testwaterfall.csv",header=T,sep=",")
+y_threshold=-0.66
+data2 <- data2%>%
+  mutate(mycolor=ifelse(data2$label=="0","#4D85BD","#F7903D"))
+plt2 <- ggplot(data2,aes(x=Name,y=Radiomics.signature()))+
+  geom_segment(aes(x=Name,xend=Name,y=y_threshold,
+                   yend=Radiomics.signature),color=data2$mycolor,size=3,alpha=0.9)+
+  theme_light()+
+  theme_classic()+
+  theme(
+    legend.position="none",
+    panel.border=element_rect(color = "black", fill = NA,size = 1)
+  )+
+  xlab("Patient")+
+  ylab("Radiomics signature")+
+  labs(title=title)+
+  theme(plot.title=element_text(hjust=0.5))
+plot(plt2)
