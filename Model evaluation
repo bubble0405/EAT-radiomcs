@@ -1,0 +1,71 @@
+library(rms)
+library(pROC)
+library(rmda)
+library(nricens)
+
+#train-ROC
+train <- read.csv('trainm.csv')
+dd <- datadist(train)
+options(datadist='dd')
+fit1 <- lrm(label~Radiomics.signature,data=train,x=T,y=T)
+p1 <- predict(fit1,newdata=train,type='fitted')
+gfit1 <- roc(label~p1, data = train)
+gfit1
+ci(gfit1)
+plot(gfit1,
+     col= 'red',
+     identity.col="black",
+     identity.lty=1,identity.lwd=1,legacy.axes = TRUE,xlab = "1-Specificity")
+
+#test-ROC
+test <- read.csv('testm.csv')
+p2 <- predict(fit1,newdata=test,type='fitted')#预测值
+gfit2 <- roc(label~p2, data = test)
+gfit2
+ci(gfit2)
+plot(gfit2,
+     col= 'red',
+     identity.col="black",
+     identity.lty=1,identity.lwd=1,legacy.axes = TRUE,xlab = "1-Specificity")
+
+#train-calibration curvce
+cal1 <- calibrate(fit1, method='boot', B=1000,data=train) 
+plot(cal1,xlim=c(0,1.0),ylim=c(0,1.0),xlab='Predicted Probability')
+library(ResourceSelection)
+h1 <- hoslem.test(train$label, p1, g=5)
+h1
+
+#test-calibration curvce
+fit2 <- lrm(label~p2,data=test,x=T,y=T)
+cal1 <- calibrate(fit2, method='boot', B=1000,data=test) 
+plot(cal1,xlim=c(0,1.0),ylim=c(0,1.0),xlab='Predicted Probability')
+h2 <- hoslem.test(test$label, p2, g=5)
+h2
+
+#DCA-train
+modul1<- decision_curve(data=train,
+                        label~Radiomics.signature,
+                        family = binomial,
+                        confidence.intervals = 0.95, study.design = 'case-control')
+plot_decision_curve(modul1,
+                    xlab="Threshold probability", #x轴名称
+                    curve.names =c("Radiomics.signature"),
+                    col= 'red',
+                    cost.benefit.axis =FALSE,
+                    confidence.intervals=FALSE,
+                    standardize = FALSE)
+summary(modul1,measure= 'NB')
+
+#DCA-test
+modul2<- decision_curve(data=test,
+                        label~Radiomics.signature,
+                        family = binomial,
+                        confidence.intervals = 0.95, study.design = 'case-control')
+plot_decision_curve(modul2,
+                    xlab="Threshold probability", #x轴名称
+                    curve.names =c("Radiomics.signature"),
+                    col= 'red',
+                    cost.benefit.axis =FALSE,
+                    confidence.intervals=FALSE,
+                    standardize = FALSE)
+summary(modul2,measure= 'NB')
