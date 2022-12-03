@@ -1,0 +1,366 @@
+#ICC
+{library(irr)
+  feature1 <- read.csv('data1.csv')
+  feature2 <- read.csv('data2.csv')
+  len <- 1220 
+  icc_val<-vector(length=len)
+  thr <- 0.75
+  selected <- feature1[feature1$Name %in% feature2$Name,] 
+  for (i in 3:len){ 
+    ratings <- cbind(selected[,i],feature2[,i])
+    icc <- icc(ratings, model = "oneway", 
+               type = "agreement", 
+               unit = "single", r0 = 0, conf.level = 0.95)
+    icc_val[i] <- icc$value
+  }
+  Index1 <- which(icc_val > thr)
+  feature3 <- read.csv('data3.csv')
+  len1 <- 1220 
+  icc_val1<-vector(length=len1)
+  thr1 <- 0.75
+  selected1 <- feature2[feature2$Name %in% feature3$Name,] 
+  for (i in 3:len1){ 
+    ratings1 <- cbind(selected1[,i],feature3[,i])
+    icc1 <- icc(ratings1, model = "twoway", 
+                type = "agreement", 
+                unit = "single", r0 = 0, conf.level = 0.95)
+    icc_val1[i] <- icc1$value
+  }
+  Index2 <- which(icc_val1 > thr1)
+  Index <- intersect(Index1,Index2)
+  data <- feature1[,c(1,2,Index)]
+}
+#Scotter plot
+library(ggplot2)
+library(gcookbook)
+#Inter-ICC
+{Features<-array(1:1218)
+Features<-data.frame(Features)
+ICC_inter<-Features
+icc_val<-icc_val[3:1220]
+ICC_inter$ICC<-icc_val
+ggplot(ICC_inter,aes(x=Features,y=ICC))+geom_point()+theme_classic()+
+  theme(panel.border = element_rect(color = "black", fill = NA,size = 1))+
+  geom_hline(aes(yintercept=0.75),colour="red",size = 1)+
+  ylim(0,1)+
+  xlab("Radiomics Features")+
+  theme(text=element_text(family="serif"))
+}
+#Intra-ICC
+{ICC_intra<-Features
+icc_val1<-icc_val1[3:1220]
+ICC_intra$ICC<-icc_val1
+ggplot(ICC_intra,aes(x=Features,y=ICC))+geom_point()+theme_classic()+
+  theme(panel.border = element_rect(color = "black", fill = NA,size = 1))+
+  geom_hline(aes(yintercept=0.75),colour="red",size = 1)+
+  ylim(0,1)+
+  xlab("Radiomics Features")+
+  theme(text=element_text(family="serif"))
+}
+# Stratified random sampling 
+{library(sampling)
+data<-data[order(data$label),]
+n <- table(data$label)
+n
+nLevel=round(n*0.7)
+nLevel
+set.seed(1234)
+trainingSamp = strata(data,stratanames="label",size = nLevel,method = "srswor",description = T) 
+train_index<-trainingSamp$ID_unit
+train <- data[train_index,]
+test<-data[-train_index,]
+}
+#Normalization
+{means<- sapply(train[,3:1138],mean) 
+stdev <- sapply(train[,3:1138],sd)
+train.scaled <- as.data.frame(scale(train[,3:1138],center=means,scale=stdev)) 
+test.scaled <- as.data.frame(scale(test[,3:1138],center=means,scale=stdev))
+}
+#Correlation 
+{norm_result <- apply(train.scaled,2,function(x)shapiro.test(x)$p.value)
+norm_feature <- train.scaled[which(norm_result >= 0.05)]                    
+non_norm_feature <- train.scaled[which(norm_result < 0.05)][-1]
+train.scaled <- cbind(norm_feature,non_norm_feature)  
+cor_nor <- cor(norm_feature,method='pearson')
+cor_all <- cor(train.scaled,method='spearman')
+num_nor <- dim(cor_nor)[1]
+cor_all[1:num_nor,1:num_nor] <- cor_nor
+cor_all[upper.tri(cor_all)] <- 0
+diag(cor_all) <- 0
+data_reduce = train.scaled[,!apply(cor_all,2,function(x)any(abs(x)>0.9))] 
+}
+#Lasso 
+{set.seed(1)
+library(glmnet)
+cv_x <- as.matrix(data_reduce)
+cv_y <-as.matrix(train$label) 
+lasso_selection <- cv.glmnet(x=cv_x,y=cv_y,family='binomial',type.measure='deviance',alpha=1,nfolds=10)
+par(font.lab=2,mfrow=c(2,1),mar=c(4.5,5,3,2))
+plot(x=lasso_selection,las=1,xlab='Log(lambda)',family="serif")
+nocv_lasso <- glmnet(x=cv_x,y=cv_y,family='binomial',alpha=1)
+plot(nocv_lasso,xvar='lambda',las=1,lwd=2,xlab='Log(lambda)',family="serif")
+abline(v=log(lasso_selection$lambda.min),lwd=1,lty=3,col='black')
+coefPara <- coef(object=lasso_selection,s='lambda.min')
+lasso_values <- as.data.frame(which(coefPara!=0,arr.ind=T))
+lasso_names <- rownames(lasso_values)[-1] 
+lasso_coef <- data.frame(Feature=rownames(lasso_values),Coef=coefPara[which(coefPara!=0,arr.ind=T)])
+lasso_coef 
+}
+lasso_selection$lambda.min
+log(lasso_selection$lambda.min)
+
+{feature<-lasso_coef$Feature
+feature<-feature[-1]
+train_lasso<-train.scaled[,feature]
+test_lasso<-test.scaled[,feature]
+train_lasso$label <- train$label
+train_lasso$Name <- train$Name
+test_lasso$label <- test$label
+test_lasso$Name <- test$Name
+train_lasso$Radiomics.signature<--1.210625157-0.025492217*train_lasso$log.sigma.5.0.mm.3D_firstorder_Skewness+ 0.507143986*train_lasso$wavelet.LLH_glcm_Idmn-0.247073454*train_lasso$wavelet.HLH_glcm_Imc2-0.015273790*train_lasso$log.sigma.2.0.mm.3D_firstorder_Skewness-0.002072263*train_lasso$log.sigma.2.0.mm.3D_glcm_ClusterShade
+test_lasso$Radiomics.signature<--1.210625157-0.025492217*test_lasso$log.sigma.5.0.mm.3D_firstorder_Skewness+ 0.507143986*test_lasso$wavelet.LLH_glcm_Idmn-0.247073454*test_lasso$wavelet.HLH_glcm_Imc2-0.015273790*test_lasso$log.sigma.2.0.mm.3D_firstorder_Skewness-0.002072263*test_lasso$log.sigma.2.0.mm.3D_glcm_ClusterShade
+}
+#Logistic 
+library(rms)
+dd <- datadist(train_lasso)
+options(datadist='dd')
+fit1 <- lrm(label~Radiomics.signature,data=train_lasso,x=T,y=T)
+library(pROC)
+library(rmda)
+library(nricens)
+#ROC-train
+p1 <- predict(fit1,newdata=train_lasso,type='fitted') 
+gfit1 <- roc(label~p1, data = train_lasso)
+gfit1
+ci(gfit1)
+plot(gfit1,
+     col= 'red', 
+     identity.col="black", 
+     identity.lty=1,identity.lwd=1,legacy.axes = TRUE,xlab = "1-Specificity",family="serif")
+#ROC-test 
+p2 <- predict(fit1,newdata=test_lasso,type='fitted') 
+gfit2 <- roc(label~p2, data = test_lasso)
+gfit2
+ci(gfit2)
+plot(gfit2,
+     col= 'red', 
+     identity.col="black", 
+     identity.lty=1,identity.lwd=1,legacy.axes = TRUE,xlab = "1-Specificity",family="serif")
+
+#200 times stratified 5-fold cross-validation
+sample=list()
+for (s in 1:200) {
+  Z=5 
+  T=2 
+  n=nrow(train_lasso)
+  e=names(table(train_lasso$label))
+  d=1:n
+  dd=list()
+  for(i in 1:2) {
+    dd[[i]]=d[train_lasso[,6]==e[i]]
+  }
+  kk=NULL
+  for(i in 1:T){
+    kk=c(kk,round(length(dd[[i]])/Z))
+  } 
+  kk
+  yy=list(NULL,NULL)
+  for(i in 1:T){
+    xx=list()
+    uu=dd[[i]]
+    for(j in 1:(Z-1)){
+      xx[[j]]=sample(uu,kk[[i]])
+      uu=setdiff(uu,xx[[j]])
+    }
+    xx[[Z]]=uu
+    for(k in 1:Z){
+      yy[[i]][[k]]=xx[[k]]
+    }
+  }
+  mm=list(NULL,NULL,NULL,NULL,NULL)
+  for(i in 1:Z){
+    for(j in 1:T){
+      mm[[i]]=c(mm[[i]],yy[[j]][[i]])
+    }
+  }
+  sample[[s]]<-mm 
+}
+train_cv <- train_lasso[-sample[[1]][[1]],]
+test_cv <- train_lasso[sample[[1]][[1]],]
+dd <- datadist(train_cv)
+options(datadist='dd')
+fit <- lrm(label~Radiomics.signature,data=train_cv,x=T,y=T)
+p <- predict(fit,newdata=test_cv,type='fitted')# 
+gfit <- roc(label~p, data = test_cv)
+gfit
+set.seed(1234)
+auc_value1<-as.numeric()
+auc_value2<-as.numeric()
+for(i in 1:200){
+  for(z in 1:5){
+    train_cv<- train_lasso[-sample[[i]][[z]],] 
+    test_cv <- train_lasso[sample[[i]][[z]],] 
+    fit <- lrm(label~Radiomics.signature,data=train_cv,x=T,y=T)
+    p_train<- predict(fit,newdata=train_cv,type='fitted') 
+    auc_value1< append(auc_value1,as.numeric(auc(as.numeric(train_cv[,6]), p_train)))
+    p_test <- predict(fit,newdata=test_cv,type='fitted') 
+    auc_value2<- append(auc_value2,as.numeric(auc(as.numeric(test_cv[,6]),p_test))) 
+  }
+}
+t.test(auc_value1)
+t.test(auc_value2)
+r1<-rep('1',2000)
+r1<-data.frame(r1)
+r1$AUC<-auc_value1
+colnames(r1)[1]<-"Group"
+r2<-rep('2',2000)
+r2<-data.frame(r2)
+r2$AUC<-auc_value2
+colnames(r2)[1]<-"Group"
+r<-rbind(r1,r2)
+r$Group<-factor(r$Group,
+                levels=c("1","2"),
+                labels=c("Training cohort","Testing cohort"))
+library(ggpubr)
+library(ggplot2)
+ggboxplot(r,x="Group",y="AUC",color="Group",palette =c('#F8766D',"#00BFC4"))+
+  geom_boxplot(size=1,color=c('#F8766D',"#00BFC4"))+
+  stat_boxplot(geom = "errorbar",color=c('#F8766D',"#00BFC4"),width=0.5,size=1)+
+  geom_jitter(aes(color=Group),width=0.35,size=1)+
+  labs(x="")+
+  theme(legend.title=element_blank())+
+  theme(panel.border = element_rect(color = "black", fill = NA,size =0.5))+
+  theme(axis.text.x = element_blank())+
+  theme(axis.ticks.x=element_blank())+
+  theme(legend.position = "bottom")+
+  theme(text=element_text(family="serif"))
+
+#Calibration curve
+cal <- calibrate(fit1, method='boot', B=1000,data=train_lasso) 
+plot(cal,xlim=c(0,1.0),ylim=c(0,1.0),xlab='Predicted Probability',family="serif")
+library(ResourceSelection)
+h1 <- hoslem.test(train_lasso$label, p1, g=5)
+h1
+fit2 <- lrm(label~p2,data=test_lasso,x=T,y=T)
+cal1 <- calibrate(fit2, method='boot', B=1000,data=test_lasso) 
+plot(cal1,xlim=c(0,1.0),ylim=c(0,1.0),xlab='Predicted Probability',family="serif")
+h2 <- hoslem.test(test_lasso$label, p2, g=5)
+h2
+
+#DCA
+modul1<- decision_curve(data=train_lasso,
+                        label~Radiomics.signature,
+                        family = binomial,
+                        confidence.intervals = 0.95, study.design = 'case-control')
+
+modul2<- decision_curve(data=test_lasso,
+                        label~Radiomics.signature,
+                        family = binomial,
+                        confidence.intervals = 0.95, study.design = 'case-control')
+plot_decision_curve(modul1,
+                    xlab="Threshold probability", 
+                    curve.names =c("Radiomics.signature"),
+                    col= 'red',
+                    cost.benefit.axis =FALSE,
+                    confidence.intervals=FALSE,
+                    standardize = FALSE,
+                    family="serif")
+summary(modul1,measure= 'NB')
+plot_decision_curve(modul2,
+                    xlab="Threshold probability", 
+                    curve.names =c("Radiomics.signature"),
+                    col= 'red',
+                    cost.benefit.axis =FALSE,
+                    confidence.intervals=FALSE,
+                    standardize = FALSE,
+                    family="serif")
+summary(modul2,measure= 'NB')
+
+#t-test
+library(dplyr)
+train_lasso <- train_lasso%>%
+  mutate(group=ifelse(train_lasso$label=="0","non-POAF","POAF"))
+test_lasso <- test_lasso%>%
+  mutate(group=ifelse(test_lasso$label=="0","non-POAF","POAF"))
+library(ggplot2)
+p1<-ggplot(train_lasso,width=0.9,aes(x = group,y = Radiomics.signature, fill = group))+
+  geom_boxplot(aes(fill = group),position=position_dodge(1),
+               size=0.5,
+               width=0.4)+
+  stat_boxplot(geom = "errorbar",width=0.15,lwd=1)+
+  labs(x = 'Group', y = 'Radiomics signature', title = 'p < 0.05')+
+  theme(legend.position="none",panel.grid = element_blank(), 
+        panel.background = element_rect(color = 'black', fill = 'transparent'), 
+        plot.title = element_text( hjust = 0.5,vjust = -20)) +
+  theme(text=element_text(family="serif"))
+p1
+p2<-ggplot(test_lasso,width=0.9,aes(x = group,y =Radiomics.signature, fill = group))+
+  geom_boxplot(aes(fill = group),position=position_dodge(1),
+               size=0.5,
+               width=0.4)+
+  stat_boxplot(geom = "errorbar",width=0.15,lwd=1)+
+  labs(x = 'Group', y = 'Radiomics signature', title = 'p = 0.07')+
+  theme(legend.position="none",panel.grid = element_blank(), 
+        panel.background = element_rect(color = 'black', fill = 'transparent'), 
+        plot.title = element_text( hjust = 0.5,vjust = -20)) +
+  theme(text=element_text(family="serif"))
+p2
+
+#Waterfall-train
+library(dplyr)
+library(ggplot2)
+library(hrbrthemes)
+train_lasso<-train_lasso[order(train_lasso$Radiomics.signature),]
+order<-array(1:65)
+order<-data.frame(order)
+train_lasso$order<-order$order
+title=" "
+y_threshold=-0.84
+plt1 <- ggplot(train_lasso,aes(x=order,y=Radiomics.signature,fill=group))+
+  geom_segment(aes(x=order,xend=order,y=y_threshold,
+                   yend=Radiomics.signature,color=group),size=2.5)+
+  theme_light()+
+  theme_classic()+
+  xlab("Patient")+
+  ylab("Radiomics signature")+
+  labs(title=title)+
+  theme(legend.position= c(0.85,0.15),
+        plot.title=element_text(hjust=0.5),
+        legend.title = element_blank())+
+  theme(panel.border=element_rect(color = "black", fill = NA,size = 0.5))+
+  theme(text=element_text(family="serif"))
+plt1
+#Waterfall-test
+test_lasso<-test_lasso[order(test_lasso$Radiomics.signature),]
+order<-array(1:28)
+order<-data.frame(order)
+test_lasso$order<-order$order
+title=" "
+y_threshold=-0.84
+plt2 <- ggplot(test_lasso,aes(x=order,y=Radiomics.signature,fill=group))+
+  geom_segment(aes(x=order,xend=order,y=y_threshold,
+                   yend=Radiomics.signature,color=group),size=2.5)+
+  theme_light()+
+  theme_classic()+
+  xlab("Patient")+
+  ylab("Radiomics signature")+
+  labs(title=title)+
+  theme(legend.position= c(0.85,0.15),
+        plot.title=element_text(hjust=0.5),
+        legend.title = element_blank())+
+  theme(panel.border=element_rect(color = "black", fill = NA,size = 0.5))+
+  theme(text=element_text(family="serif"))
+plt2
+
+#Coefficient
+library(ggplot2)
+library(dplyr)
+coe<- lasso_coef[2:6,]
+coe <- coe %>% mutate(
+  Feature = factor(Feature,levels = rev(Feature[order(Coef)])))
+myplot=ggplot(coe,aes(x=Coef,y=Feature))+
+  geom_bar(stat="identity",width=0.5,col="#4393C3",lwd=1,fill="#4393C3")+
+  theme_bw()+
+  labs(x="Coefficient",y="Feature")+
+  theme(text=element_text(family="serif"))
+myplot
